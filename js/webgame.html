@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cosmo's Endless Run</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      font-family: sans-serif;
+    }
+
+    /* ── NAVBAR ── */
+    nav {
+      width: 100%;
+      background: #3a3a3a;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    nav .brand {
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: 0.5px;
+    }
+    nav ul {
+      list-style: none;
+      display: flex;
+      gap: 8px;
+    }
+    nav ul li a {
+      color: #dddddd;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border-radius: 6px;
+      transition: background 0.2s, color 0.2s;
+    }
+    nav ul li a:hover {
+      background: #555555;
+      color: #ffffff;
+    }
+    nav ul li a.active {
+      background: #555555;
+      color: #ffffff;
+    }
+
+    /* ── GAME AREA ── */
+    #game-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 2rem 1rem;
+      flex: 1;
+      justify-content: center;
+    }
+    #hud {
+      display: flex;
+      gap: 24px;
+      font-size: 14px;
+      color: #555;
+    }
+    #hud span {
+      font-weight: 600;
+      color: #00205B;
+    }
+    #canvas {
+      border-radius: 12px;
+      border: 1px solid #ccc;
+      display: block;
+      background: #00205B;
+      cursor: pointer;
+      max-width: 100%;
+    }
+    #msg {
+      font-size: 13px;
+      color: #777;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav>
+    <a class="brand" href="#">🐾 Cosmo's Run</a>
+    <ul>
+      <li><a href="from-scratch.html">Home</a></li>
+      <li><a href="../index.html">Resume</a></li>
+    </ul>
+  </nav>
+
+  <!-- GAME -->
+  <div id="game-wrap">
+    <div id="hud">
+      Score: <span id="score-val">0</span>
+      &nbsp;|&nbsp;
+      High Score: <span id="hi-val">0</span>
+      &nbsp;|&nbsp;
+      Level: <span id="lvl-val">1</span>
+    </div>
+    <canvas id="canvas" width="640" height="200"></canvas>
+    <div id="msg">Press Space or tap to jump — double jump allowed! Go Cougars!</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score-val');
+    const hiEl = document.getElementById('hi-val');
+    const lvlEl = document.getElementById('lvl-val');
+
+    const W = 640, H = 200, GROUND = 148;
+    const GRAVITY = 0.55, JUMP_V = -11.5;
+
+    let state = 'idle', score = 0, hi = 0, frame = 0;
+    let speed = 4, spawnTimer = 0, spawnInterval = 90;
+    let player, obstacles, particles, clouds, stars;
+
+    function initStars() {
+      return Array.from({ length: 35 }, () => ({
+        x: Math.random() * W, y: Math.random() * (GROUND - 10),
+        r: Math.random() * 1.2 + 0.3, tw: Math.random() * Math.PI * 2
+      }));
+    }
+
+    function reset() {
+      score = 0; frame = 0; speed = 4; spawnTimer = 0; spawnInterval = 90;
+      player = { x: 80, y: GROUND, w: 38, h: 42, vy: 0, jumps: 0, maxJumps: 2, legPhase: 0 };
+      obstacles = []; particles = [];
+      clouds = Array.from({ length: 5 }, (_, i) => ({
+        x: i * (W / 4) + 120, y: Math.random() * 35 + 15,
+        w: Math.random() * 55 + 35, h: 14 + Math.random() * 8
+      }));
+      stars = initStars();
+    }
+
+    function spawnObstacle() {
+      const types = [{ w: 16, h: 34 }, { w: 24, h: 22 }, { w: 13, h: 48 }];
+      const t = types[Math.floor(Math.random() * types.length)];
+      const ph = player.h;
+      obstacles.push({ x: W + 10, y: GROUND + ph - t.h, w: t.w, h: t.h });
+      if (Math.random() < 0.25 && score > 300) {
+        const t2 = types[Math.floor(Math.random() * types.length)];
+        obstacles.push({ x: W + 10 + t.w + 22, y: GROUND + ph - t2.h, w: t2.w, h: t2.h });
+      }
+    }
+
+    function addParticles(x, y) {
+      for (let i = 0; i < 10; i++) {
+        particles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 5,
+          vy: (Math.random() - 2) * 4,
+          life: 1,
+          c: ['#ffffff', '#002E8A', '#75b2dd'][Math.floor(Math.random() * 3)]
+        });
+      }
+    }
+
+    function jump() {
+      if (state === 'idle' || state === 'dead') { state = 'running'; reset(); return; }
+      if (player.jumps < player.maxJumps) {
+        player.vy = JUMP_V; player.jumps++;
+        addParticles(player.x + player.w / 2, player.y + player.h);
+      }
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); jump(); }
+    });
+    canvas.addEventListener('click', jump);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); }, { passive: false });
+
+    function drawCosmo(p) {
+      const x = p.x, y = p.y, w = p.w, h = p.h;
+      const isGround = p.y >= GROUND;
+      const lp = p.legPhase;
+      const BYU = '#002E8A', WHITE = '#FFFFFF', CREAM = '#F5F0E8', NOSE = '#1a1a1a', FUR = '#D4A96A';
+
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, GROUND + h + 3, w * 0.38, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      const legW = 9, legH = 14, legY = y + h - legH + 2;
+      if (isGround) {
+        const lift1 = Math.max(0, Math.sin(lp)) * 8;
+        const lift2 = Math.max(0, Math.sin(lp + Math.PI)) * 8;
+        ctx.fillStyle = BYU;
+        ctx.beginPath(); ctx.roundRect(x + 4, legY - lift1, legW, legH + lift1, 3); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(x + w - 13, legY - lift2, legW, legH + lift2, 3); ctx.fill();
+        ctx.fillStyle = WHITE;
+        ctx.beginPath(); ctx.roundRect(x + 4, legY - lift1 + legH - 5, legW, 5, 2); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(x + w - 13, legY - lift2 + legH - 5, legW, 5, 2); ctx.fill();
+      } else {
+        ctx.fillStyle = BYU;
+        ctx.beginPath(); ctx.roundRect(x + 4, legY - 4, legW, legH + 4, 3); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(x + w - 13, legY + 4, legW, legH - 2, 3); ctx.fill();
+        ctx.fillStyle = WHITE;
+        ctx.beginPath(); ctx.roundRect(x + 4, legY + legH - 5, legW, 5, 2); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(x + w - 13, legY + legH + 2, legW, 5, 2); ctx.fill();
+      }
+
+      ctx.strokeStyle = FUR; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      const tailBase = y + h - 10;
+      ctx.beginPath();
+      ctx.moveTo(x + w - 4, tailBase);
+      const swing = isGround ? Math.sin(lp * 1.5) * 6 : 8;
+      ctx.bezierCurveTo(x + w + 12, tailBase - 5, x + w + 20, tailBase - 15 + swing, x + w + 14, tailBase - 26 + swing);
+      ctx.stroke();
+
+      ctx.fillStyle = BYU;
+      ctx.beginPath(); ctx.roundRect(x + 2, y + 14, w - 4, h - 26, 5); ctx.fill();
+
+      ctx.fillStyle = WHITE;
+      ctx.font = '500 13px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('Y', x + w / 2, y + h - 16);
+
+      ctx.fillStyle = CREAM;
+      ctx.beginPath(); ctx.ellipse(x + w / 2, y + h - 22, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
+
+      if (isGround) {
+        const armSwing = Math.sin(lp) * 10;
+        ctx.strokeStyle = BYU; ctx.lineWidth = 7; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x + 6, y + 22); ctx.lineTo(x - 4, y + 30 + armSwing); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + w - 6, y + 22); ctx.lineTo(x + w + 4, y + 30 - armSwing); ctx.stroke();
+        ctx.fillStyle = FUR;
+        ctx.beginPath(); ctx.arc(x - 4, y + 30 + armSwing, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + w + 4, y + 30 - armSwing, 5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.strokeStyle = BYU; ctx.lineWidth = 7; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x + 6, y + 22); ctx.lineTo(x - 8, y + 16); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + w - 6, y + 22); ctx.lineTo(x + w + 8, y + 16); ctx.stroke();
+        ctx.fillStyle = FUR;
+        ctx.beginPath(); ctx.arc(x - 8, y + 16, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + w + 8, y + 16, 5, 0, Math.PI * 2); ctx.fill();
+      }
+
+      ctx.fillStyle = FUR;
+      ctx.beginPath(); ctx.ellipse(x + w / 2, y + 8, 16, 14, 0, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = FUR;
+      ctx.beginPath(); ctx.moveTo(x + 4, y + 1); ctx.lineTo(x, y - 10); ctx.lineTo(x + 10, y - 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + w - 4, y + 1); ctx.lineTo(x + w, y - 10); ctx.lineTo(x + w - 10, y - 2); ctx.fill();
+      ctx.fillStyle = '#c07a50';
+      ctx.beginPath(); ctx.moveTo(x + 5, y + 0); ctx.lineTo(x + 2, y - 7); ctx.lineTo(x + 10, y - 1); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + w - 5, y + 0); ctx.lineTo(x + w - 2, y - 7); ctx.lineTo(x + w - 10, y - 1); ctx.fill();
+
+      ctx.fillStyle = CREAM;
+      ctx.beginPath(); ctx.ellipse(x + w / 2, y + 12, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = NOSE;
+      ctx.beginPath(); ctx.arc(x + w / 2 - 5, y + 6, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + w / 2 + 5, y + 6, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = WHITE;
+      ctx.beginPath(); ctx.arc(x + w / 2 - 4, y + 5, 1, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + w / 2 + 6, y + 5, 1, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = NOSE;
+      ctx.beginPath(); ctx.ellipse(x + w / 2, y + 10, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
+
+      ctx.strokeStyle = '#8B5E3C'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(x + w / 2, y + 12, 4, 0.2, Math.PI - 0.2); ctx.stroke();
+
+      ctx.fillStyle = BYU;
+      ctx.beginPath(); ctx.roundRect(x + w / 2 - 12, y - 6, 24, 8, 2); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(x + w / 2 - 8, y - 14, 16, 10, 3); ctx.fill();
+      ctx.fillStyle = WHITE;
+      ctx.font = '500 7px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('BYU', x + w / 2, y - 7);
+    }
+
+    function drawObstacles() {
+      obstacles.forEach(o => {
+        ctx.fillStyle = '#75b2dd';
+        ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 3); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath(); ctx.roundRect(o.x + 2, o.y + 2, o.w - 4, 6, 2); ctx.fill();
+        ctx.strokeStyle = '#002E8A'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 3); ctx.stroke();
+      });
+    }
+
+    function drawBG() {
+      ctx.fillStyle = '#00205B';
+      ctx.fillRect(0, 0, W, GROUND + player.h);
+
+      stars.forEach(s => {
+        s.tw += 0.04;
+        ctx.globalAlpha = 0.35 + 0.35 * Math.sin(s.tw);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+
+      clouds.forEach(c => {
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.beginPath(); ctx.ellipse(c.x, c.y, c.w / 2, c.h / 2, 0, 0, Math.PI * 2); ctx.fill();
+        if (state === 'running') c.x -= speed * 0.2;
+        if (c.x < -c.w) c.x = W + c.w;
+      });
+
+      ctx.fillStyle = '#001845';
+      ctx.fillRect(0, GROUND + player.h, W, H - (GROUND + player.h));
+
+      ctx.strokeStyle = '#002E8A'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, GROUND + player.h); ctx.lineTo(W, GROUND + player.h); ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+      for (let dx = -(frame * speed % 60); dx < W; dx += 60) {
+        ctx.beginPath(); ctx.moveTo(dx, GROUND + player.h + 8); ctx.lineTo(dx + 30, GROUND + player.h + 8); ctx.stroke();
+      }
+
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.font = '500 20px sans-serif'; ctx.textAlign = 'left';
+      for (let gx = 0; gx < W; gx += 80) {
+        ctx.fillText('Y', (gx - (frame * speed * 0.08) % 80 + W) % W, GROUND + player.h + 27);
+      }
+    }
+
+    function drawParticles() {
+      particles.forEach(p => {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.c;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function drawOverlay() {
+      if (state === 'idle') {
+        ctx.fillStyle = 'rgba(0,20,70,0.65)'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#FFFFFF'; ctx.font = '500 22px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText("Cosmo's Endless Run", W / 2, H / 2 - 16);
+        ctx.font = '14px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText('Tap or press Space to start', W / 2, H / 2 + 12);
+        ctx.textAlign = 'left';
+      } else if (state === 'dead') {
+        ctx.fillStyle = 'rgba(0,20,70,0.7)'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#75b2dd'; ctx.font = '500 22px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('Oh no, Cosmo!', W / 2, H / 2 - 18);
+        ctx.font = '14px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillText('Score: ' + Math.floor(score) + '  |  Best: ' + Math.floor(hi), W / 2, H / 2 + 8);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.fillText('Tap or Space to try again', W / 2, H / 2 + 30);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    function checkCollision(p, o) {
+      const m = 5;
+      return p.x + m < o.x + o.w && p.x + p.w - m > o.x && p.y + m < o.y + o.h && p.y + p.h - m > o.y;
+    }
+
+    function update() {
+      if (state !== 'running') return;
+      frame++;
+      score += speed * 0.05;
+      const level = Math.floor(score / 200) + 1;
+      speed = 4 + (level - 1) * 0.6;
+      spawnInterval = Math.max(45, 90 - level * 4);
+      scoreEl.textContent = Math.floor(score);
+      hiEl.textContent = Math.floor(hi);
+      lvlEl.textContent = level;
+
+      player.vy += GRAVITY; player.y += player.vy;
+      if (player.y >= GROUND) { player.y = GROUND; player.vy = 0; player.jumps = 0; }
+      if (player.y < GROUND) player.legPhase = 0;
+      else player.legPhase += 0.28;
+
+      spawnTimer++;
+      if (spawnTimer >= spawnInterval) { spawnObstacle(); spawnTimer = 0; }
+      obstacles.forEach(o => o.x -= speed);
+      obstacles = obstacles.filter(o => o.x + o.w > -10);
+
+      for (const o of obstacles) {
+        if (checkCollision(player, o)) {
+          addParticles(player.x + player.w / 2, player.y + player.h / 2);
+          if (score > hi) hi = score;
+          state = 'dead'; return;
+        }
+      }
+
+      particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.05; });
+      particles = particles.filter(p => p.life > 0);
+    }
+
+    reset();
+
+    function loop() {
+      ctx.clearRect(0, 0, W, H);
+      drawBG();
+      drawObstacles();
+      drawParticles();
+      drawCosmo(player);
+      drawOverlay();
+      update();
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html>

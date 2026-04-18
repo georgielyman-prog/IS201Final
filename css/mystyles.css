@@ -1,0 +1,101 @@
+ul, ol {
+    display: inline-block;
+    text-align: left;
+    list-style-position: inside;
+    padding-left: 20px;
+}
+
+body{ 
+    text-align: center; 
+    background-color: #A10000; 
+    font-family: Arial, sans-serif;  
+    font-size: 18px;
+}
+
+h1, h2 {
+    font-family: Georgia, 'Times New Roman', serif;
+}
+
+h1 {
+    font-size: 42px;
+}
+
+h2 {
+    font-size: 28px;
+}
+
+p, li {
+    font-size: 18px;
+}
+
+.top-nav {
+    position-anchor: fixed;
+    text-align: right;
+    margin-top: 15px;
+    margin-right: 20px
+}
+
+.top-nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.top-nav li {
+    display: inline-block;
+    margin-left: 15px;
+}
+
+.top-nav a {
+    text-decoration: none;
+    color: white;
+    font-weight: bold;
+    background-color: #333;
+    padding: 8px 12px;
+    border-radius: 5px
+}
+
+.top-nav a:hover {
+    background-color: #555
+}
+
+.page { 
+    border: 12px solid black;
+    margin: 40px;
+    background-color: white; 
+    padding: 50px; 
+}
+
+.pictures {
+    border: 12px solid black;
+    margin: 40px;
+    background-color: white;
+    padding: 50px;
+}
+
+.pictures h1 {
+    color: white;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+a[href="#top"]:hover {
+  background: #555555;
+}
+
+.trailers {
+    color: white;
+    border: 12px solid black;
+    margin: 40px;
+    background-color: white;
+    padding: 50px;
+}
+
+.graph {
+    border: 12px solid black;
+    margin: 40px;
+    background-color: white;
+    padding: 50px;
+}
